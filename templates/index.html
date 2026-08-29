@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ME 2045 Controls Lab</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  </head>
+  <body>
+    <div class="page">
+      <header class="app-header">
+        <h1>ME 2045 Controls Lab</h1>
+        <p class="subtitle">Interactive tools for Linear Control Systems — University of Pittsburgh.</p>
+      </header>
+
+      <nav class="tab-nav" role="tablist">
+        <button id="tab-btn-explorer" class="tab-btn active" type="button" role="tab" aria-selected="true">Explorer</button>
+        <button id="tab-btn-editor" class="tab-btn" type="button" role="tab" aria-selected="false">Pole-Zero Editor</button>
+      </nav>
+
+      <section id="tab-panel-explorer" class="tab-panel">
+        <section class="card">
+          <h2 class="card-title">Presets</h2>
+        <div id="preset-buttons" class="preset-row"></div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Transfer function</h2>
+        <div class="controls">
+          <label>
+            <span class="field-label">Numerator</span>
+            <input id="num-input" type="text" value="1" inputmode="decimal" />
+            <span class="field-hint">Comma-separated, highest power first</span>
+          </label>
+          <label>
+            <span class="field-label">Denominator</span>
+            <input id="den-input" type="text" value="1, 1, 4" inputmode="decimal" />
+            <span class="field-hint">Comma-separated, highest power first</span>
+          </label>
+        </div>
+
+        <div class="tf-preview" aria-live="polite">
+          <span class="tf-label">G(s) =</span>
+          <span class="tf-fraction">
+            <span id="tf-numerator" class="tf-num"></span>
+            <span class="tf-bar"></span>
+            <span id="tf-denominator" class="tf-den"></span>
+          </span>
+        </div>
+
+        <div class="response-row">
+          <label class="amplitude-field">
+            <span class="field-label">Amplitude</span>
+            <input id="amplitude-input" type="number" value="1" min="0" step="any" />
+          </label>
+          <div class="toggle-row" role="group" aria-label="Response type">
+            <button id="step-btn" class="toggle-btn active" type="button">Step response</button>
+            <button id="impulse-btn" class="toggle-btn" type="button">Impulse response</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="error-banner" class="error-banner hidden" role="alert">
+        <svg class="error-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 2.5 18.5 17H1.5L10 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+          <path d="M10 8v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <circle cx="10" cy="14.5" r="0.9" fill="currentColor" />
+        </svg>
+        <span id="error-message"></span>
+      </div>
+
+      <section class="card">
+        <div class="chart-header">
+          <h2 class="card-title">Response</h2>
+          <span id="stability-badge" class="stability-badge hidden">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 2 14.5 13H1.5L8 2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+              <path d="M8 6.4v3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+              <circle cx="8" cy="11.4" r="0.8" fill="currentColor" />
+            </svg>
+            <span id="stability-badge-label"></span>
+          </span>
+        </div>
+        <div id="chart"></div>
+      </section>
+
+      <section id="decomposition-card" class="card decomposition-card hidden">
+        <h2 class="card-title">Component decomposition</h2>
+        <p class="decomposition-note hidden" id="decomposition-note"></p>
+        <div id="decomposition-chart"></div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Performance metrics</h2>
+        <div class="metrics-grid">
+          <div class="metric-tile">
+            <span class="metric-label">Rise time (s)</span>
+            <span id="metric-rise-time" class="metric-value">&mdash;</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Settling time (s)</span>
+            <span id="metric-settling-time" class="metric-value">&mdash;</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Overshoot (%)</span>
+            <span id="metric-overshoot" class="metric-value">&mdash;</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Peak</span>
+            <span id="metric-peak" class="metric-value">&mdash;</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Peak time (s)</span>
+            <span id="metric-peak-time" class="metric-value">&mdash;</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Steady-state value</span>
+            <span id="metric-steady-state" class="metric-value">&mdash;</span>
+          </div>
+        </div>
+      </section>
+
+        <section class="card">
+          <h2 class="card-title">Pole&ndash;zero map</h2>
+          <div id="pole-zero-chart"></div>
+        </section>
+      </section>
+
+      <section id="tab-panel-editor" class="tab-panel hidden">
+        <section class="card">
+          <h2 class="card-title">Pole-Zero Editor</h2>
+          <div class="pz-editor-controls">
+            <div class="toggle-row" role="group" aria-label="Placement mode">
+              <button id="place-pole-btn" class="toggle-btn active" type="button">Place pole</button>
+              <button id="place-zero-btn" class="toggle-btn" type="button">Place zero</button>
+            </div>
+            <label class="amplitude-field">
+              <span class="field-label">Gain (K)</span>
+              <input id="gain-input" type="number" value="1" step="any" />
+            </label>
+            <button id="delete-selected-btn" class="secondary-btn" type="button" disabled>Delete selected</button>
+            <button id="clear-all-btn" class="secondary-btn" type="button">Clear all</button>
+          </div>
+          <svg id="pz-editor-svg" viewBox="0 0 480 480" class="pz-editor-svg" role="img" aria-label="Pole-zero placement canvas"></svg>
+          <p class="field-hint">Click empty space to place a pole or zero. Points placed off the real axis automatically get a mirrored conjugate partner. Click a marker to select it, then use Delete selected to remove it.</p>
+        </section>
+
+        <div id="editor-error-banner" class="error-banner hidden" role="alert">
+          <svg class="error-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 2.5 18.5 17H1.5L10 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M10 8v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="10" cy="14.5" r="0.9" fill="currentColor" />
+          </svg>
+          <span id="editor-error-message"></span>
+        </div>
+
+        <section class="card">
+          <h2 class="card-title">Transfer function</h2>
+          <div class="tf-preview" aria-live="polite">
+            <span class="tf-label">G(s) =</span>
+            <span class="tf-fraction">
+              <span id="editor-tf-numerator" class="tf-num"></span>
+              <span class="tf-bar"></span>
+              <span id="editor-tf-denominator" class="tf-den"></span>
+            </span>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 class="card-title">Step response</h2>
+          <div id="editor-chart"></div>
+        </section>
+      </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='chart-utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='pole-zero-editor.js') }}"></script>
+  </body>
+</html>
