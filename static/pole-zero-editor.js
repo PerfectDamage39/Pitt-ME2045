@@ -17,6 +17,7 @@ let pzNextId = 1;
 let pzSelectedId = null;
 let pzPlacementMode = "pole";
 let pzGain = 1;
+let pzResponseType = "step";
 
 function dataToPixel(re, im) {
   return { x: PZ_CENTER + re * PZ_PX_PER_UNIT, y: PZ_CENTER - im * PZ_PX_PER_UNIT };
@@ -231,7 +232,7 @@ async function updateAndFetch() {
     const res = await fetch("/api/response", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ num, den, response_type: "step", amplitude: 1 }),
+      body: JSON.stringify({ num, den, response_type: pzResponseType, amplitude: 1 }),
     });
 
     const data = await res.json();
@@ -253,6 +254,8 @@ const placeZeroBtn = document.getElementById("place-zero-btn");
 const deleteSelectedBtn = document.getElementById("delete-selected-btn");
 const clearAllBtn = document.getElementById("clear-all-btn");
 const gainInput = document.getElementById("gain-input");
+const editorStepBtn = document.getElementById("editor-step-btn");
+const editorImpulseBtn = document.getElementById("editor-impulse-btn");
 
 function updateDeleteButtonState() {
   deleteSelectedBtn.disabled = pzSelectedId === null;
@@ -303,6 +306,20 @@ clearAllBtn.addEventListener("click", () => {
   clearAllPoleZero();
   renderPoleZeroCanvas();
   updateDeleteButtonState();
+  updateAndFetch();
+});
+
+editorStepBtn.addEventListener("click", () => {
+  pzResponseType = "step";
+  editorStepBtn.classList.add("active");
+  editorImpulseBtn.classList.remove("active");
+  updateAndFetch();
+});
+
+editorImpulseBtn.addEventListener("click", () => {
+  pzResponseType = "impulse";
+  editorImpulseBtn.classList.add("active");
+  editorStepBtn.classList.remove("active");
   updateAndFetch();
 });
 
