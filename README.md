@@ -15,22 +15,38 @@ progresses.
 
 ![Typing a new denominator instantly updates the transfer function, response curve, and pole–zero map; switching to the Pole-Zero Editor tab and clicking to place a pole updates them the same way](docs/assets/explorer-demo.gif)
 
-## Features
+## The Tabs
 
-- Step and impulse response with rise time, settling time, overshoot,
-  peak, and steady-state value
-- Live pole–zero map and step-response decomposition into individual modes
-- Stability classification (stable / marginally stable / unstable)
-- Interactive pole-zero editor: click to place poles/zeros, adjust gain,
-  and see the derived transfer function and step response instantly
-- 2nd-order system explorer: sweep damping ratio ζ and natural frequency
-  ωn and watch the poles and response move on fixed axes
-- Root locus tool: enter open-loop poles and zeros, sweep the gain K to
-  watch the closed-loop poles travel along the branches, overlay the
-  sketching rules (real-axis segments, asymptotes and centroid, breakaway
-  points, jω crossing and maximum stable gain), and click any point in
-  the s-plane to test it against the angle criterion
-- Light/dark theme, no build step, no external accounts required
+**Explorer** — type a transfer function (or click a preset) and get the
+step or impulse response with rise time, settling time, overshoot, peak,
+and steady-state value, alongside a live pole–zero map, a stability
+classification (stable / marginally stable / unstable), and a
+decomposition of the response into its individual modes.
+
+**Pole-Zero Editor** — build a system the other way round: click poles and
+zeros directly onto the s-plane, adjust the gain, and read off the
+transfer function and response that result. Points placed off the real
+axis get their conjugate partner automatically.
+
+**2nd-Order System** — sweep damping ratio ζ and natural frequency ωn on
+the canonical form *G(s) = ωn² / (s² + 2ζωn·s + ωn²)* and watch the poles
+and the step response move together, with the regime (undamped,
+underdamped, critically damped, overdamped) named as you go. The axes stay
+fixed while you drag, so you're comparing the curves themselves rather
+than a rescaling plot.
+
+**Root Locus** — enter the open-loop poles and zeros of the loop gain,
+then sweep K to watch the closed-loop poles travel along the branches
+while the closed-loop step response follows. Overlays draw the sketching
+rules — real-axis segments, asymptotes and centroid, breakaway points, and
+the jω crossing with the maximum stable gain — so a hand sketch can be
+checked against the real thing. Clicking any point in the s-plane tests it
+against the angle criterion: a vector is drawn from every pole and zero,
+each distance and angle is tabulated, and the tool reports whether the sum
+lands on 180°.
+
+Everything runs locally with a light/dark theme, no build step, and no
+external accounts.
 
 ## Tutorial: Run It on Your Own Machine
 
@@ -100,8 +116,15 @@ pytest test_app.py -v
 
 ## Notes
 
-- Numerator/denominator coefficients are entered highest power first,
-  comma-separated (e.g. `1, 1, 4` for `s^2 + s + 4`).
+- In the Explorer, numerator/denominator coefficients are entered highest
+  power first, comma-separated (e.g. `1, 1, 4` for `s^2 + s + 4`).
+- In the Root Locus tab, poles and zeros are entered in factored form
+  instead — as a list of locations (e.g. `-1, -2, -3, -4`). Complex
+  entries are written `-1+1j`, and `-1±1j` is shorthand for the whole
+  conjugate pair.
+- The Root Locus tab assumes **unity feedback**: what you enter is the
+  loop gain *L(s) = G(s)H(s)*, the closed-loop poles are the roots of
+  *1 + K·L(s) = 0*, and the plotted response is *K·L / (1 + K·L)*.
 - Unstable and marginally-stable systems are simulated over a capped time
   window sized to the system's own dynamics, and performance metrics
   (rise time, settling time, etc.) aren't shown, since they aren't
