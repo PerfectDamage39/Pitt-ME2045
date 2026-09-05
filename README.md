@@ -7,9 +7,11 @@ fixed demo.
 
 Right now: type in a transfer function (or click a preset) and see its
 step/impulse response, performance metrics, pole–zero map, and modal
-decomposition update live — or switch to the **Pole-Zero Editor** tab and
-build a system by clicking poles and zeros directly onto the s-plane. New
-tools get added as the class progresses.
+decomposition update live. Other tabs let you build a system by clicking
+poles and zeros directly onto the s-plane, sweep a 2nd-order system's ζ
+and ωn, or sweep the gain on a **root locus** and watch the closed-loop
+poles travel toward instability. New tools get added as the class
+progresses.
 
 ![Typing a new denominator instantly updates the transfer function, response curve, and pole–zero map; switching to the Pole-Zero Editor tab and clicking to place a pole updates them the same way](docs/assets/explorer-demo.gif)
 
@@ -21,6 +23,13 @@ tools get added as the class progresses.
 - Stability classification (stable / marginally stable / unstable)
 - Interactive pole-zero editor: click to place poles/zeros, adjust gain,
   and see the derived transfer function and step response instantly
+- 2nd-order system explorer: sweep damping ratio ζ and natural frequency
+  ωn and watch the poles and response move on fixed axes
+- Root locus tool: enter open-loop poles and zeros, sweep the gain K to
+  watch the closed-loop poles travel along the branches, overlay the
+  sketching rules (real-axis segments, asymptotes and centroid, breakaway
+  points, jω crossing and maximum stable gain), and click any point in
+  the s-plane to test it against the angle criterion
 - Light/dark theme, no build step, no external accounts required
 
 ## Tutorial: Run It on Your Own Machine

@@ -15,6 +15,9 @@ from app import (
     validate_amplitude,
     compute_step_components,
     compute_poles_zeros,
+    parse_complex_list,
+    polynomial_from_roots,
+    compute_root_locus,
 )
 
 
@@ -541,3 +544,140 @@ def test_response_endpoint_includes_poles_and_zeros(client):
     data = resp.get_json()
     assert len(data["poles_zeros"]["poles"]) == 2
     assert len(data["poles_zeros"]["zeros"]) == 1
+
+
+# --- Root locus -------------------------------------------------------------
+#
+# The expected values below are the ones worked out by hand in the ME 2045
+# lecture notes ("3 Complex Numbers and Root Locus"), so these tests check the
+# tool against the same numbers students are asked to reproduce.
+
+
+def test_parse_complex_list_reads_reals():
+    assert parse_complex_list("0, -2", "Poles") == [0j, complex(-2, 0)]
+
+
+def test_parse_complex_list_reads_complex_and_normalizes_i():
+    assert parse_complex_list("-1+1i, -1-1i", "Zeros") == [complex(-1, 1), complex(-1, -1)]
+
+
+def test_parse_complex_list_expands_conjugate_shorthand():
+    assert parse_complex_list("-1±1j", "Zeros") == [complex(-1, 1), complex(-1, -1)]
+
+
+def test_parse_complex_list_reads_bare_j():
+    assert parse_complex_list("2j, -j", "Poles") == [complex(0, 2), complex(0, -1)]
+
+
+def test_parse_complex_list_empty_is_empty():
+    assert parse_complex_list("", "Zeros") == []
+    assert parse_complex_list(None, "Zeros") == []
+
+
+def test_parse_complex_list_rejects_garbage():
+    with pytest.raises(ValueError, match="Could not read"):
+        parse_complex_list("-1, banana", "Poles")
+
+
+def test_polynomial_from_roots_is_real_for_conjugate_pair():
+    coeffs = polynomial_from_roots([complex(-1, 1), complex(-1, -1)])
+    assert np.allclose(coeffs, [1, 2, 2])
+
+
+def test_root_locus_requires_a_pole():
+    with pytest.raises(ValueError, match="at least one open-loop pole"):
+        compute_root_locus("", "-1")
+
+
+def test_root_locus_rejects_improper_loop_gain():
+    with pytest.raises(ValueError, match="proper"):
+        compute_root_locus("-1", "-1, -2")
+
+
+def test_root_locus_branches_start_at_open_loop_poles():
+    """Rule 3 / Section 5: at K=0 the closed-loop poles are the open-loop poles."""
+    result = compute_root_locus("0, -2", "")
+    start = sorted(branch[0]["real"] for branch in result["branches"])
+    assert np.allclose(start, [-2.0, 0.0])
+
+
+def test_root_locus_simple_example_breakaway():
+    """Section 2: K/(s(s+2)) breaks away at s=-1 when K=1."""
+    result = compute_root_locus("0, -2", "")
+    assert len(result["breakaway_points"]) == 1
+    point = result["breakaway_points"][0]
+    assert point["real"] == pytest.approx(-1.0)
+    assert point["gain"] == pytest.approx(1.0)
+
+
+def test_root_locus_simple_example_never_goes_unstable():
+    assert compute_root_locus("0, -2", "")["jw_crossing"] is None
+
+
+def test_root_locus_asymptotes_two_pole_example():
+    """Section 7: K/((s+2)(s+4)) gives 90/270 degrees about sigma = -3."""
+    asymptotes = compute_root_locus("-2, -4", "")["asymptotes"]
+    assert asymptotes["angles"] == [90.0, 270.0]
+    assert asymptotes["centroid"] == pytest.approx(-3.0)
+
+
+def test_root_locus_asymptotes_worked_example():
+    """Section 8: 4 poles, 1 zero gives 60/180/300 about sigma = -3.27."""
+    asymptotes = compute_root_locus("-1, -2, -3, -4", "-0.2")["asymptotes"]
+    assert asymptotes["angles"] == [60.0, 180.0, 300.0]
+    assert asymptotes["centroid"] == pytest.approx(-3.267, abs=1e-3)
+
+
+def test_root_locus_maximum_stable_gain_worked_example():
+    """Section 9: the locus crosses the imaginary axis at K=275.7, w=5.7."""
+    crossing = compute_root_locus("-1, -2, -3, -4", "-0.2")["jw_crossing"]
+    assert crossing["gain"] == pytest.approx(275.7, abs=0.5)
+    assert crossing["omega"] == pytest.approx(5.707, abs=0.01)
+
+
+def test_root_locus_real_axis_segments_worked_example():
+    """Rule 4 applied to the Section 8 example."""
+    segments = compute_root_locus("-1, -2, -3, -4", "-0.2")["real_axis_segments"]
+    assert segments == [
+        {"from": -0.2, "to": -1.0},
+        {"from": -2.0, "to": -3.0},
+        {"from": -4.0, "to": None},
+    ]
+
+
+def test_root_locus_characteristic_polynomial_worked_example():
+    """Section 9 multiplies the poles out to s^4+10s^3+35s^2+50s+24."""
+    result = compute_root_locus("-1, -2, -3, -4", "-0.2")
+    assert np.allclose(result["den"], [1, 10, 35, 50, 24])
+
+
+def test_root_locus_complex_zeros_give_real_numerator():
+    """Section 8's full form: zeros at -0.2 and -1+-1j."""
+    result = compute_root_locus("-1, -2, -3, -4", "-0.2, -1±1j")
+    assert np.allclose(result["num"], [1, 2.2, 2.4, 0.4])
+    assert result["asymptotes"]["count"] == 1
+
+
+def test_root_locus_gain_ceiling_clears_the_crossing():
+    result = compute_root_locus("-1, -2, -3, -4", "-0.2")
+    assert max(result["gains"]) > result["jw_crossing"]["gain"]
+
+
+def test_root_locus_endpoint_returns_locus(client):
+    resp = client.post("/api/root-locus", json={"poles": "0, -2", "zeros": ""})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data["branches"]) == 2
+    assert len(data["gains"]) == len(data["branches"][0])
+
+
+def test_root_locus_endpoint_reports_errors(client):
+    resp = client.post("/api/root-locus", json={"poles": "nope", "zeros": ""})
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_root_locus_presets_endpoint(client):
+    resp = client.get("/api/root-locus-presets")
+    assert resp.status_code == 200
+    assert len(resp.get_json()) == 5

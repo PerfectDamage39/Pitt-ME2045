@@ -18,6 +18,7 @@
         <button id="tab-btn-explorer" class="tab-btn active" type="button" role="tab" aria-selected="true">Explorer</button>
         <button id="tab-btn-editor" class="tab-btn" type="button" role="tab" aria-selected="false">Pole-Zero Editor</button>
         <button id="tab-btn-second-order" class="tab-btn" type="button" role="tab" aria-selected="false">2nd-Order System</button>
+        <button id="tab-btn-root-locus" class="tab-btn" type="button" role="tab" aria-selected="false">Root Locus</button>
       </nav>
 
       <section id="tab-panel-explorer" class="tab-panel">
@@ -263,11 +264,94 @@
           </div>
         </section>
       </section>
+      <section id="tab-panel-root-locus" class="tab-panel hidden">
+        <div class="chart-row">
+          <section class="card">
+            <h2 class="card-title">Loop gain K&middot;L(s)</h2>
+            <div id="rl-presets" class="preset-row"></div>
+            <div class="controls">
+              <label>
+                <span class="field-label">Open-loop poles</span>
+                <input id="rl-poles-input" type="text" value="-1, -2, -3, -4" />
+                <span class="field-hint">Comma-separated. Use &plusmn; for a conjugate pair, e.g. &minus;1&plusmn;1j</span>
+              </label>
+              <label>
+                <span class="field-label">Open-loop zeros</span>
+                <input id="rl-zeros-input" type="text" value="-0.2" />
+                <span class="field-hint">Leave blank for none</span>
+              </label>
+            </div>
+            <div class="tf-preview" aria-live="polite">
+              <span class="tf-label">K&middot;L(s) = K</span>
+              <span class="tf-fraction">
+                <span id="rl-tf-numerator" class="tf-num"></span>
+                <span class="tf-bar"></span>
+                <span id="rl-tf-denominator" class="tf-den"></span>
+              </span>
+            </div>
+            <p class="field-hint">Unity feedback assumed, so the closed-loop poles are the roots of 1 + K&middot;L(s) = 0.</p>
+          </section>
+
+          <section class="card">
+            <div class="chart-header">
+              <h2 class="card-title">Gain K</h2>
+              <span id="rl-stability-badge" class="regime-badge"></span>
+            </div>
+            <div class="slider-field">
+              <div class="slider-label-row">
+                <label for="rl-gain-slider" class="field-label">Sweep the gain</label>
+                <span id="rl-gain-value" class="slider-value">K = 0</span>
+              </div>
+              <input id="rl-gain-slider" type="range" min="0" max="400" step="1" value="200" />
+            </div>
+            <p id="rl-gain-note" class="field-hint"></p>
+            <div class="rl-toggles">
+              <label class="rl-toggle"><input id="rl-toggle-segments" type="checkbox" checked /> Real-axis segments</label>
+              <label class="rl-toggle"><input id="rl-toggle-asymptotes" type="checkbox" checked /> Asymptotes &amp; centroid</label>
+              <label class="rl-toggle"><input id="rl-toggle-breakaway" type="checkbox" checked /> Breakaway points</label>
+              <label class="rl-toggle"><input id="rl-toggle-crossing" type="checkbox" checked /> j&omega; crossing</label>
+            </div>
+          </section>
+        </div>
+
+        <div id="rl-error-banner" class="error-banner hidden" role="alert">
+          <svg class="error-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 2.5 18.5 17H1.5L10 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M10 8v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="10" cy="14.5" r="0.9" fill="currentColor" />
+          </svg>
+          <span id="rl-error-message"></span>
+        </div>
+
+        <div class="chart-row">
+          <section class="card">
+            <h2 class="card-title">Root locus</h2>
+            <div id="rl-chart"></div>
+            <p class="field-hint">Click anywhere in the plane to test that point against the angle criterion.</p>
+          </section>
+
+          <section class="card">
+            <h2 class="card-title">Closed-loop step response</h2>
+            <div id="rl-response-chart"></div>
+            <p class="field-hint">Updates as you sweep K &mdash; the payoff of moving the poles.</p>
+          </section>
+        </div>
+
+        <section id="rl-probe-card" class="card hidden">
+          <div class="chart-header">
+            <h2 class="card-title">Angle criterion at the test point</h2>
+            <button id="rl-clear-probe-btn" class="secondary-btn" type="button">Clear test point</button>
+          </div>
+          <div id="rl-probe-body"></div>
+          <p id="rl-probe-verdict" class="rl-verdict"></p>
+        </section>
+      </section>
     </div>
 
     <script src="{{ url_for('static', filename='chart-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
     <script src="{{ url_for('static', filename='pole-zero-editor.js') }}"></script>
     <script src="{{ url_for('static', filename='second-order-tab.js') }}"></script>
+    <script src="{{ url_for('static', filename='root-locus-tab.js') }}"></script>
   </body>
 </html>

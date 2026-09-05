@@ -1,4 +1,6 @@
 import math
+import re
+import warnings
 
 from flask import Flask, render_template, jsonify, request
 import numpy as np
@@ -298,6 +300,255 @@ def compute_response(num, den, response_type, amplitude=1.0, duration=None):
     }
 
 
+ROOT_LOCUS_PRESETS = [
+    {"name": "K/(s(s+2))", "poles": "0, -2", "zeros": ""},
+    {"name": "K(s+1)/(s(s+2))", "poles": "0, -2", "zeros": "-1"},
+    {"name": "K/((s+2)(s+4))", "poles": "-2, -4", "zeros": ""},
+    {"name": "4 poles, 1 zero", "poles": "-1, -2, -3, -4", "zeros": "-0.2"},
+    {"name": "4 poles, 3 zeros", "poles": "-1, -2, -3, -4", "zeros": "-0.2, -1±1j"},
+]
+
+_BARE_J = re.compile(r"(?<![0-9.])j")
+
+
+def parse_complex_list(text, label):
+    """Parse a comma-separated list of real/complex numbers.
+
+    Accepts what students actually write: '0', '-2', '-1+1j', '-1-2i',
+    a bare 'j' meaning 1j, and '-1±1j' as shorthand for the conjugate
+    pair '-1+1j, -1-1j' (conjugates always come as a pair, so typing
+    both halves separately is just an opportunity to mistype one).
+    """
+    if text is None:
+        return []
+    if not isinstance(text, str):
+        raise ValueError(f"{label} must be text")
+
+    values = []
+    for raw in text.split(","):
+        entry = raw.strip()
+        if not entry:
+            continue
+        halves = entry.split("±") if "±" in entry else [entry]
+        if len(halves) > 2:
+            raise ValueError(f"Could not read '{entry}' in {label}")
+        if len(halves) == 2:
+            candidates = [f"{halves[0]}+{halves[1]}", f"{halves[0]}-{halves[1]}"]
+        else:
+            candidates = halves
+
+        for candidate in candidates:
+            cleaned = candidate.replace(" ", "").replace("i", "j").replace("J", "j")
+            cleaned = _BARE_J.sub("1j", cleaned)
+            try:
+                parsed = complex(cleaned)
+            except ValueError:
+                raise ValueError(f"Could not read '{entry}' in {label} as a number")
+            if not (math.isfinite(parsed.real) and math.isfinite(parsed.imag)):
+                raise ValueError(f"{label} must contain only finite numbers")
+            values.append(parsed)
+
+    return values
+
+
+def _as_points(values):
+    return [{"real": float(v.real), "imag": float(v.imag)} for v in values]
+
+
+def polynomial_from_roots(roots):
+    """Monic polynomial with the given roots, as real coefficients.
+
+    Root lists that are closed under conjugation give a real polynomial;
+    tiny imaginary residue from the multiplication is numerical noise.
+    """
+    if not roots:
+        return np.array([1.0])
+    coeffs = np.poly(np.asarray(roots, dtype=complex))
+    return np.real_if_close(coeffs, tol=1000).astype(float)
+
+
+def closed_loop_denominator(num, den, gain):
+    """Characteristic polynomial den(s) + K*num(s)."""
+    padded = np.concatenate([np.zeros(len(den) - len(num)), np.asarray(num, dtype=float)])
+    return np.asarray(den, dtype=float) + gain * padded
+
+
+def compute_asymptotes(poles, zeros):
+    """Rules 5-6: angles (2n+1)*180/(n_p-n_z) about the centroid."""
+    order = len(poles) - len(zeros)
+    if order <= 0:
+        return None
+    centroid = (sum(p.real for p in poles) - sum(z.real for z in zeros)) / order
+    angles = [(2 * n + 1) * 180.0 / order for n in range(order)]
+    return {"angles": angles, "centroid": float(centroid), "count": order}
+
+
+def compute_real_axis_segments(poles, zeros):
+    """Rule 4: the locus covers real-axis stretches with an odd number of
+    real poles and zeros (counted with multiplicity) strictly to the right.
+
+    Each segment is {"from": right end, "to": left end}, where a null left
+    end means the segment runs to negative infinity.
+    """
+    reals = [p.real for p in poles if abs(p.imag) <= _STABILITY_EPS]
+    reals += [z.real for z in zeros if abs(z.imag) <= _STABILITY_EPS]
+    if not reals:
+        return []
+
+    distinct = sorted(set(round(r, 9) for r in reals), reverse=True)
+    segments = []
+    passed = 0
+    for i, value in enumerate(distinct):
+        passed += sum(1 for r in reals if round(r, 9) == value)
+        if passed % 2 == 1:
+            left = distinct[i + 1] if i + 1 < len(distinct) else None
+            segments.append({"from": float(value), "to": None if left is None else float(left)})
+    return segments
+
+
+def _on_real_axis_segment(value, segments):
+    for seg in segments:
+        left = seg["to"]
+        if value <= seg["from"] + 1e-9 and (left is None or value >= left - 1e-9):
+            return True
+    return False
+
+
+def compute_breakaway_points(num, den, segments):
+    """Points where branches meet and leave (or rejoin) the real axis.
+
+    On the locus K(s) = -den(s)/num(s), and branches break away exactly
+    where dK/ds = 0, i.e. den'(s)num(s) - den(s)num'(s) = 0.
+    """
+    expr = np.polysub(np.polymul(np.polyder(den), num), np.polymul(den, np.polyder(num)))
+    expr = np.trim_zeros(np.asarray(expr, dtype=float), "f")
+    if len(expr) < 2:
+        return []
+
+    points = []
+    for root in np.roots(expr):
+        if abs(root.imag) > 1e-6:
+            continue
+        s = float(root.real)
+        if not _on_real_axis_segment(s, segments):
+            continue
+        num_at = float(np.polyval(num, s))
+        if abs(num_at) < 1e-12:
+            continue
+        gain = -float(np.polyval(den, s)) / num_at
+        if gain <= 1e-9:
+            continue
+        if any(abs(s - p["real"]) < 1e-6 for p in points):
+            continue
+        points.append({"real": s, "imag": 0.0, "gain": gain})
+
+    return sorted(points, key=lambda p: p["real"], reverse=True)
+
+
+def _max_real_part(num, den, gain):
+    return float(np.roots(closed_loop_denominator(num, den, gain)).real.max())
+
+
+def compute_jw_crossing(num, den, search_ceiling=1e7):
+    """Smallest positive K at which a closed-loop pole reaches the
+    imaginary axis -- the maximum stable gain (lecture Section 9).
+
+    Returns None when the loop never crosses over within the search
+    range, or when it is already unstable at K=0.
+    """
+    if _max_real_part(num, den, 0.0) > _STABILITY_EPS:
+        return None
+
+    lo = 0.0
+    hi = None
+    probe = 1e-3
+    while probe <= search_ceiling:
+        if _max_real_part(num, den, probe) > 0:
+            hi = probe
+            break
+        lo = probe
+        probe *= 1.6
+    if hi is None:
+        return None
+
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if _max_real_part(num, den, mid) > 0:
+            hi = mid
+        else:
+            lo = mid
+
+    roots = np.roots(closed_loop_denominator(num, den, lo))
+    crossing = max(roots, key=lambda r: r.real)
+    return {"gain": float(lo), "omega": float(abs(crossing.imag))}
+
+
+def choose_gain_ceiling(num, den, crossing):
+    """Top of the gain slider: far enough past the interesting behaviour
+    to see where the branches are heading.
+    """
+    if crossing is not None and crossing["gain"] > 0:
+        return crossing["gain"] * 2.0
+
+    spread = max([abs(r) for r in np.roots(den)] + [1.0])
+    gain = 1.0
+    for _ in range(80):
+        reach = max(abs(r) for r in np.roots(closed_loop_denominator(num, den, gain)))
+        if reach > 5 * spread:
+            return gain
+        gain *= 2.0
+    return gain
+
+
+ROOT_LOCUS_SAMPLES = 400
+
+
+def compute_root_locus(poles_text, zeros_text):
+    poles = parse_complex_list(poles_text, "Poles")
+    zeros = parse_complex_list(zeros_text, "Zeros")
+
+    if not poles:
+        raise ValueError("Enter at least one open-loop pole")
+    if len(zeros) > len(poles):
+        raise ValueError(
+            "Loop gain must be proper (no more open-loop zeros than poles)"
+        )
+
+    num = polynomial_from_roots(zeros)
+    den = polynomial_from_roots(poles)
+
+    crossing = compute_jw_crossing(num, den)
+    ceiling = choose_gain_ceiling(num, den, crossing)
+    gains = np.concatenate(
+        [[0.0], np.logspace(math.log10(ceiling) - 4, math.log10(ceiling), ROOT_LOCUS_SAMPLES)]
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        locus = control.root_locus_map(control.TransferFunction(num, den), gains)
+    loci = np.asarray(locus.loci)
+
+    branches = [
+        [{"real": float(p.real), "imag": float(p.imag)} for p in loci[:, i]]
+        for i in range(loci.shape[1])
+    ]
+
+    segments = compute_real_axis_segments(poles, zeros)
+
+    return {
+        "poles": _as_points(poles),
+        "zeros": _as_points(zeros),
+        "num": [float(c) for c in num],
+        "den": [float(c) for c in den],
+        "gains": [float(g) for g in gains],
+        "branches": branches,
+        "asymptotes": compute_asymptotes(poles, zeros),
+        "real_axis_segments": segments,
+        "breakaway_points": compute_breakaway_points(num, den, segments),
+        "jw_crossing": crossing,
+    }
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -306,6 +557,20 @@ def index():
 @app.route("/api/presets")
 def presets():
     return jsonify(PRESETS)
+
+
+@app.route("/api/root-locus-presets")
+def root_locus_presets():
+    return jsonify(ROOT_LOCUS_PRESETS)
+
+
+@app.route("/api/root-locus", methods=["POST"])
+def root_locus():
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(compute_root_locus(data.get("poles"), data.get("zeros")))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/response", methods=["POST"])
