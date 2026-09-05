@@ -1,7 +1,9 @@
 const tabBtnExplorer = document.getElementById("tab-btn-explorer");
 const tabBtnEditor = document.getElementById("tab-btn-editor");
+const tabBtnSecondOrder = document.getElementById("tab-btn-second-order");
 const tabPanelExplorer = document.getElementById("tab-panel-explorer");
 const tabPanelEditor = document.getElementById("tab-panel-editor");
+const tabPanelSecondOrder = document.getElementById("tab-panel-second-order");
 
 const PZ_RANGE = 6; // data units from -6 to 6 on each axis
 const PZ_VIEWBOX = 480; // svg viewBox size in pixels
@@ -339,23 +341,34 @@ addPoleZeroPoint("pole", -0.5, 1.94);
 renderPoleZeroCanvas();
 updateAndFetch();
 
-function showTab(name) {
-  const showExplorer = name === "explorer";
-  tabPanelExplorer.classList.toggle("hidden", !showExplorer);
-  tabPanelEditor.classList.toggle("hidden", showExplorer);
-  tabBtnExplorer.classList.toggle("active", showExplorer);
-  tabBtnEditor.classList.toggle("active", !showExplorer);
-  tabBtnExplorer.setAttribute("aria-selected", String(showExplorer));
-  tabBtnEditor.setAttribute("aria-selected", String(!showExplorer));
+const TAB_DEFINITIONS = [
+  { name: "explorer", btn: tabBtnExplorer, panel: tabPanelExplorer },
+  { name: "editor", btn: tabBtnEditor, panel: tabPanelEditor },
+  { name: "second-order", btn: tabBtnSecondOrder, panel: tabPanelSecondOrder },
+];
 
-  if (!showExplorer) {
+function showTab(name) {
+  TAB_DEFINITIONS.forEach((tab) => {
+    const isActive = tab.name === name;
+    tab.panel.classList.toggle("hidden", !isActive);
+    tab.btn.classList.toggle("active", isActive);
+    tab.btn.setAttribute("aria-selected", String(isActive));
+  });
+
+  // Plotly charts rendered while their container was hidden need an
+  // explicit resize once they become visible.
+  if (name === "editor") {
     Plotly.Plots.resize("editor-chart");
+  } else if (name === "second-order") {
+    Plotly.Plots.resize("second-order-chart");
+    Plotly.Plots.resize("second-order-pole-zero-chart");
   }
 }
 
 function initTabs() {
-  tabBtnExplorer.addEventListener("click", () => showTab("explorer"));
-  tabBtnEditor.addEventListener("click", () => showTab("editor"));
+  TAB_DEFINITIONS.forEach((tab) => {
+    tab.btn.addEventListener("click", () => showTab(tab.name));
+  });
 }
 
 initTabs();

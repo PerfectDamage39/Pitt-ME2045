@@ -110,6 +110,26 @@ def validate_amplitude(amplitude):
     return amplitude_f
 
 
+def validate_duration(duration):
+    try:
+        duration_f = float(duration)
+    except (TypeError, ValueError):
+        raise ValueError("Duration must be a number")
+    if not math.isfinite(duration_f) or duration_f <= 0:
+        raise ValueError("Duration must be a positive number")
+    return duration_f
+
+
+def fixed_time_window(duration):
+    """Simulation time array spanning exactly [0, duration], for callers
+    (like the 2nd-Order System tab) that pin the chart's x-axis to a fixed
+    range and need the response data to fill it rather than stopping
+    wherever `control`'s own auto-duration heuristic decides to.
+    """
+    num_points = int(min(2000, max(300, duration * 100)))
+    return np.linspace(0, duration, num_points)
+
+
 def compute_metrics(sys, t, y, response_type, stable, amplitude):
     if not stable:
         return {
@@ -229,7 +249,7 @@ def compute_step_components(num_f, den_f, amplitude, t):
     return components
 
 
-def compute_response(num, den, response_type, amplitude=1.0):
+def compute_response(num, den, response_type, amplitude=1.0, duration=None):
     if response_type not in ("step", "impulse"):
         raise ValueError("response_type must be 'step' or 'impulse'")
     amplitude_f = validate_amplitude(amplitude)
@@ -238,7 +258,12 @@ def compute_response(num, den, response_type, amplitude=1.0):
     stability = classify_stability(den_f)
     stable = stability == "stable"
 
-    T = None if stable else capped_time_window(den_f)
+    if duration is not None:
+        T = fixed_time_window(validate_duration(duration))
+    elif not stable:
+        T = capped_time_window(den_f)
+    else:
+        T = None
 
     if response_type == "step":
         if T is None:
@@ -292,6 +317,7 @@ def response():
             data.get("den"),
             data.get("response_type"),
             data.get("amplitude", 1.0),
+            data.get("duration"),
         )
         return jsonify(result)
     except ValueError as e:
