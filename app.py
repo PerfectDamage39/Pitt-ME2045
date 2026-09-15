@@ -1,3 +1,4 @@
+import cmath
 import math
 import re
 import warnings
@@ -504,9 +505,13 @@ ROOT_LOCUS_SAMPLES = 400
 
 
 def compute_root_locus(poles_text, zeros_text):
-    poles = parse_complex_list(poles_text, "Poles")
-    zeros = parse_complex_list(zeros_text, "Zeros")
+    return compute_root_locus_from_points(
+        parse_complex_list(poles_text, "Poles"),
+        parse_complex_list(zeros_text, "Zeros"),
+    )
 
+
+def compute_root_locus_from_points(poles, zeros):
     if not poles:
         raise ValueError("Enter at least one open-loop pole")
     if len(zeros) > len(poles):
@@ -549,6 +554,224 @@ def compute_root_locus(poles_text, zeros_text):
     }
 
 
+COMPENSATOR_PRESETS = [
+    {"name": "K/(s(s+4)(s+6))", "poles": "0, -4, -6", "zeros": "", "overshoot": 30, "target_ts": 1.99},
+    {"name": "K/(s(s+2))", "poles": "0, -2", "zeros": "", "overshoot": 20, "target_ts": 2.0},
+    {"name": "K/(s(s+1)(s+5))", "poles": "0, -1, -5", "zeros": "", "overshoot": 25, "target_ts": 3.0},
+]
+
+
+def zeta_from_overshoot(percent_overshoot):
+    """Damping ratio that produces a given percent overshoot, from
+    PO = 100*exp(-zeta*pi/sqrt(1-zeta^2)) solved for zeta.
+    """
+    try:
+        po = float(percent_overshoot)
+    except (TypeError, ValueError):
+        raise ValueError("Percent overshoot must be a number")
+    if not math.isfinite(po) or po <= 0 or po >= 100:
+        raise ValueError("Percent overshoot must be between 0 and 100")
+    ln_po = math.log(po / 100.0)
+    return -ln_po / math.sqrt(math.pi**2 + ln_po**2)
+
+
+def _angle_deg(s, point):
+    """Angle of the vector running from a pole/zero up to the test point."""
+    return math.degrees(cmath.phase(s - point))
+
+
+def loop_angle_at(s, poles, zeros):
+    """Total angle of the loop gain: zero angles add, pole angles subtract.
+
+    Deliberately left unwrapped -- the running total is what gets compared
+    against -180, and wrapping each term would destroy the monotonic
+    behaviour the zeta-ray search depends on.
+    """
+    return sum(_angle_deg(s, z) for z in zeros) - sum(_angle_deg(s, p) for p in poles)
+
+
+def loop_magnitude_at(s, poles, zeros):
+    magnitude = 1.0
+    for z in zeros:
+        magnitude *= abs(s - z)
+    for p in poles:
+        magnitude /= abs(s - p)
+    return magnitude
+
+
+def gain_at(s, poles, zeros):
+    """Gain that puts a closed-loop pole at s, from the magnitude criterion."""
+    magnitude = loop_magnitude_at(s, poles, zeros)
+    if magnitude <= 0:
+        raise ValueError("Could not evaluate the loop gain at that point")
+    return 1.0 / magnitude
+
+
+def find_locus_point_on_zeta_ray(poles, zeros, zeta):
+    """Walk out along the constant-damping ray until the angle criterion
+    closes -- the operating point proportional control alone would give.
+    """
+    direction = complex(-zeta, math.sqrt(1 - zeta**2))
+
+    radii = np.logspace(-4, 4, 900)
+    previous_r = None
+    previous_angle = None
+    for r in radii:
+        angle = loop_angle_at(r * direction, poles, zeros)
+        if previous_angle is not None and previous_angle > -180 >= angle:
+            lo, hi = previous_r, r
+            for _ in range(200):
+                mid = (lo + hi) / 2
+                if loop_angle_at(mid * direction, poles, zeros) > -180:
+                    lo = mid
+                else:
+                    hi = mid
+            return lo * direction
+        previous_r = r
+        previous_angle = angle
+
+    raise ValueError(
+        "The uncompensated locus never crosses that damping ratio — "
+        "try a different overshoot spec or plant"
+    )
+
+
+def solve_compensator(sd, deficiency_deg, kind, zero_location=None):
+    """Place the compensator so it supplies exactly the missing angle.
+
+    PD contributes a single zero, so its location is forced: one unknown,
+    one angle equation. Lead adds a pole as well, which is why the zero can
+    be chosen freely and the pole then takes back the surplus -- the
+    "infinite number of combinations" the lecture notes point at.
+    """
+    sigma = -sd.real
+    omega_d = sd.imag
+
+    if deficiency_deg <= 0:
+        raise ValueError(
+            "The target pole needs no added phase — it already sits on (or "
+            "inside) the uncompensated locus, so no lead compensator is needed"
+        )
+    if deficiency_deg >= 180:
+        raise ValueError(
+            f"The target pole needs {deficiency_deg:.1f}° of phase, which a "
+            "single lead section cannot supply"
+        )
+
+    if kind == "pd":
+        zero = sigma + omega_d / math.tan(math.radians(deficiency_deg))
+        return {
+            "kind": "pd",
+            "zero": float(zero),
+            "pole": None,
+            "theta_zero": float(deficiency_deg),
+            "theta_pole": None,
+        }
+
+    if zero_location is None:
+        # Any zero inside the PD bound works; start comfortably inside it so
+        # the compensator pole lands somewhere finite and readable.
+        pd_zero = sigma + omega_d / math.tan(math.radians(deficiency_deg))
+        zero_location = 0.8 * pd_zero
+    try:
+        zero = float(zero_location)
+    except (TypeError, ValueError):
+        raise ValueError("Compensator zero must be a number")
+    if not math.isfinite(zero) or zero <= 0:
+        raise ValueError("Compensator zero must be a positive distance from the origin")
+
+    theta_zero = math.degrees(math.atan2(omega_d, zero - sigma))
+    theta_pole = theta_zero - deficiency_deg
+    if theta_pole <= 0:
+        raise ValueError(
+            f"A zero at s = -{zero:.3g} only supplies {theta_zero:.1f}°, short of "
+            f"the {deficiency_deg:.1f}° needed — move the zero closer to the origin"
+        )
+
+    pole = sigma + omega_d / math.tan(math.radians(theta_pole))
+    return {
+        "kind": "lead",
+        "zero": float(zero),
+        "pole": float(pole),
+        "theta_zero": float(theta_zero),
+        "theta_pole": float(theta_pole),
+    }
+
+
+def compute_compensator_design(
+    poles_text, zeros_text, percent_overshoot, target_ts, kind, zero_location=None
+):
+    plant_poles = parse_complex_list(poles_text, "Poles")
+    plant_zeros = parse_complex_list(zeros_text, "Zeros")
+    if not plant_poles:
+        raise ValueError("Enter at least one plant pole")
+    if kind not in ("pd", "lead"):
+        raise ValueError("Compensator type must be 'pd' or 'lead'")
+
+    try:
+        ts_target = float(target_ts)
+    except (TypeError, ValueError):
+        raise ValueError("Target settling time must be a number")
+    if not math.isfinite(ts_target) or ts_target <= 0:
+        raise ValueError("Target settling time must be positive")
+
+    zeta = zeta_from_overshoot(percent_overshoot)
+
+    # Step 1 -- where proportional control alone puts us.
+    s_now = find_locus_point_on_zeta_ray(plant_poles, plant_zeros, zeta)
+    ts_now = 4.0 / abs(s_now.real)
+
+    # Step 2 -- where the spec says we want to be.
+    sigma = 4.0 / ts_target
+    omega_d = sigma * math.sqrt(1 - zeta**2) / zeta
+    sd = complex(-sigma, omega_d)
+
+    # Step 3 -- how much angle the plant is short at that point.
+    contributions = [
+        {"kind": "zero", "at": _as_points([z])[0], "angle": _angle_deg(sd, z)}
+        for z in plant_zeros
+    ] + [
+        {"kind": "pole", "at": _as_points([p])[0], "angle": _angle_deg(sd, p)}
+        for p in plant_poles
+    ]
+    plant_angle = loop_angle_at(sd, plant_poles, plant_zeros)
+    deficiency = -180.0 - plant_angle
+
+    # Step 4 -- place the compensator to supply exactly that.
+    compensator = solve_compensator(sd, deficiency, kind, zero_location)
+    # PD is the limiting case of lead as the compensator pole runs to
+    # infinity, so the PD zero is exactly the upper bound on a lead zero.
+    compensator["zero_limit"] = solve_compensator(sd, deficiency, "pd")["zero"]
+
+    compensated_poles = list(plant_poles)
+    compensated_zeros = list(plant_zeros) + [complex(-compensator["zero"], 0)]
+    if compensator["pole"] is not None:
+        compensated_poles = compensated_poles + [complex(-compensator["pole"], 0)]
+
+    compensator["gain"] = gain_at(sd, compensated_poles, compensated_zeros)
+
+    return {
+        "zeta": zeta,
+        "current": {
+            "pole": {"real": float(s_now.real), "imag": float(s_now.imag)},
+            "gain": gain_at(s_now, plant_poles, plant_zeros),
+            "settling_time": ts_now,
+        },
+        "target": {
+            "pole": {"real": float(sd.real), "imag": float(sd.imag)},
+            "settling_time": ts_target,
+            "sigma": sigma,
+            "omega_d": omega_d,
+        },
+        "contributions": contributions,
+        "plant_angle": plant_angle,
+        "deficiency": deficiency,
+        "compensator": compensator,
+        "uncompensated": compute_root_locus_from_points(plant_poles, plant_zeros),
+        "compensated": compute_root_locus_from_points(compensated_poles, compensated_zeros),
+    }
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -562,6 +785,29 @@ def presets():
 @app.route("/api/root-locus-presets")
 def root_locus_presets():
     return jsonify(ROOT_LOCUS_PRESETS)
+
+
+@app.route("/api/compensator-presets")
+def compensator_presets():
+    return jsonify(COMPENSATOR_PRESETS)
+
+
+@app.route("/api/compensator-design", methods=["POST"])
+def compensator_design():
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(
+            compute_compensator_design(
+                data.get("poles"),
+                data.get("zeros"),
+                data.get("overshoot"),
+                data.get("target_ts"),
+                data.get("kind"),
+                data.get("zero_location"),
+            )
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/root-locus", methods=["POST"])

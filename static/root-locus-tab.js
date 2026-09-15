@@ -373,16 +373,24 @@ function rlBuildTraces() {
   return { traces, bounds };
 }
 
+// Right margin reserves room for the legend to sit beside the plot rather
+// than on top of it; the aspect fitter treats it as chrome.
+const RL_LOCUS_MARGIN = { t: 10, r: 150, b: 46, l: 52 };
+
 function rlRenderChart() {
   if (!rlState.locus) return;
   const { traces, bounds } = rlBuildTraces();
   const ink = cssVar("--ink-secondary");
 
+  const fitted =
+    fitSquareAspect("rl-chart", bounds.x, bounds.y, RL_LOCUS_MARGIN, 340, availableChartHeight(720)) ||
+    bounds;
+
   Plotly.react(
     "rl-chart",
     traces,
     {
-      margin: { t: 10, r: 20, b: 44, l: 52 },
+      margin: RL_LOCUS_MARGIN,
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
       font: { family: "system-ui, -apple-system, Segoe UI, sans-serif", color: ink, size: 12 },
@@ -390,15 +398,13 @@ function rlRenderChart() {
       // so a stretched axis would draw every angle wrong.
       xaxis: {
         ...chartAxis("Real", true, 2.5, cssVar("--ink-secondary")),
-        range: bounds.x,
+        range: fitted.x,
         autorange: false,
       },
       yaxis: {
         ...chartAxis("Imaginary", true, 2.5, cssVar("--ink-secondary")),
-        range: bounds.y,
+        range: fitted.y,
         autorange: false,
-        scaleanchor: "x",
-        scaleratio: 1,
       },
       hovermode: "closest",
       hoverlabel: {
@@ -406,11 +412,24 @@ function rlRenderChart() {
         bordercolor: cssVar("--axis"),
         font: { color: ink },
       },
-      legend: { orientation: "h", y: -0.18, font: { color: ink } },
+      legend: {
+        x: 1.02,
+        y: 1,
+        xanchor: "left",
+        yanchor: "top",
+        bgcolor: "rgba(0,0,0,0)",
+        font: { color: ink, size: 10 },
+      },
       showlegend: true,
     },
     { responsive: true, displayModeBar: false }
   );
+
+  // react() reuses the container dimensions captured on the first render,
+  // which for a tab that starts hidden are the CSS fallback, not the box we
+  // just sized. Force a re-measure so the plot area matches the ranges above.
+  Plotly.Plots.resize("rl-chart");
+  matchChartHeight("rl-response-chart", "rl-chart");
 }
 
 function rlRenderResponseChart(data) {
@@ -442,6 +461,8 @@ function rlRenderResponseChart(data) {
     },
     { responsive: true, displayModeBar: false }
   );
+
+  matchChartHeight("rl-response-chart", "rl-chart");
 }
 
 function rlClearResponseChart() {
@@ -625,6 +646,12 @@ rlClearProbeBtn.addEventListener("click", () => {
 });
 
 document.getElementById("rl-chart").addEventListener("click", rlHandleChartClick);
+
+let rlResizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(rlResizeTimer);
+  rlResizeTimer = setTimeout(rlRenderChart, 150);
+});
 
 rlLoadPresets();
 rlFetchLocus();

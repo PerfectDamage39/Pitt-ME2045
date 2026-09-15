@@ -6,6 +6,8 @@ const tabPanelEditor = document.getElementById("tab-panel-editor");
 const tabPanelSecondOrder = document.getElementById("tab-panel-second-order");
 const tabBtnRootLocus = document.getElementById("tab-btn-root-locus");
 const tabPanelRootLocus = document.getElementById("tab-panel-root-locus");
+const tabBtnCompensator = document.getElementById("tab-btn-compensator");
+const tabPanelCompensator = document.getElementById("tab-panel-compensator");
 
 const PZ_RANGE = 6; // data units from -6 to 6 on each axis
 const PZ_VIEWBOX = 480; // svg viewBox size in pixels
@@ -348,6 +350,7 @@ const TAB_DEFINITIONS = [
   { name: "editor", btn: tabBtnEditor, panel: tabPanelEditor },
   { name: "second-order", btn: tabBtnSecondOrder, panel: tabPanelSecondOrder },
   { name: "root-locus", btn: tabBtnRootLocus, panel: tabPanelRootLocus },
+  { name: "compensator", btn: tabBtnCompensator, panel: tabPanelCompensator },
 ];
 
 function showTab(name) {
@@ -366,8 +369,11 @@ function showTab(name) {
     Plotly.Plots.resize("second-order-chart");
     Plotly.Plots.resize("second-order-pole-zero-chart");
   } else if (name === "root-locus") {
-    Plotly.Plots.resize("rl-chart");
+    rlRenderChart();
     Plotly.Plots.resize("rl-response-chart");
+  } else if (name === "compensator") {
+    cdRenderLocus();
+    Plotly.Plots.resize("cd-response-chart");
   }
 }
 

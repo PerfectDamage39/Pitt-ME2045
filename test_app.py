@@ -18,6 +18,9 @@ from app import (
     parse_complex_list,
     polynomial_from_roots,
     compute_root_locus,
+    closed_loop_denominator,
+    zeta_from_overshoot,
+    compute_compensator_design,
 )
 
 
@@ -681,3 +684,137 @@ def test_root_locus_presets_endpoint(client):
     resp = client.get("/api/root-locus-presets")
     assert resp.status_code == 200
     assert len(resp.get_json()) == 5
+
+
+# --- Compensator design ------------------------------------------------------
+#
+# Expected values come from the worked lead design in the ME 2045 lecture notes
+# ("4 Classical Control Design", Section 3): plant K/(s(s+4)(s+6)), 30%
+# overshoot, settling time halved, compensator zero placed at s = -5.
+
+
+def test_zeta_from_thirty_percent_overshoot():
+    assert zeta_from_overshoot(30) == pytest.approx(0.358, abs=1e-3)
+
+
+def test_zeta_from_overshoot_rejects_out_of_range():
+    with pytest.raises(ValueError, match="between 0 and 100"):
+        zeta_from_overshoot(0)
+    with pytest.raises(ValueError, match="between 0 and 100"):
+        zeta_from_overshoot(100)
+
+
+def test_design_step_one_finds_uncompensated_operating_point():
+    """Section 3 Step 1: s = -1.01 +- j2.63 at K = 63.2, giving Ts = 3.97 s."""
+    design = compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", 5)
+    current = design["current"]
+    assert current["pole"]["real"] == pytest.approx(-1.01, abs=0.02)
+    assert current["pole"]["imag"] == pytest.approx(2.63, abs=0.02)
+    assert current["gain"] == pytest.approx(63.2, abs=0.5)
+    assert current["settling_time"] == pytest.approx(3.97, abs=0.02)
+
+
+def test_design_step_two_places_target_pole():
+    """Section 3 Step 2: halving Ts puts the target at -2.01 +- j5.25."""
+    design = compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", 5)
+    target = design["target"]
+    assert target["pole"]["real"] == pytest.approx(-2.01, abs=0.02)
+    assert target["pole"]["imag"] == pytest.approx(5.25, abs=0.03)
+
+
+def test_design_step_three_angle_deficiency():
+    """Section 3 Step 3: 110.9 + 69.2 + 52.8 = 232.9, so 52.9 deg is missing."""
+    design = compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", 5)
+    angles = sorted(c["angle"] for c in design["contributions"])
+    assert angles == pytest.approx([52.8, 69.2, 110.9], abs=0.2)
+    assert design["plant_angle"] == pytest.approx(-232.9, abs=0.2)
+    assert design["deficiency"] == pytest.approx(52.9, abs=0.2)
+
+
+def test_design_step_four_places_lead_pole():
+    """Section 3 Step 4: a zero at -5 contributes 60.3 deg, leaving 7.4 for the pole."""
+    compensator = compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", 5)["compensator"]
+    assert compensator["theta_zero"] == pytest.approx(60.3, abs=0.2)
+    assert compensator["theta_pole"] == pytest.approx(7.4, abs=0.2)
+    assert compensator["pole"] == pytest.approx(42.7, abs=1.0)
+
+
+def test_design_actually_places_the_closed_loop_pole_at_the_target():
+    """The whole point: the compensated system must have a closed-loop pole
+    at the target, which is a stronger check than any individual step."""
+    design = compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", 5)
+    comp = design["compensator"]
+    target = complex(design["target"]["pole"]["real"], design["target"]["pole"]["imag"])
+
+    num = polynomial_from_roots([complex(-comp["zero"], 0)])
+    den = polynomial_from_roots([0, -4, -6, complex(-comp["pole"], 0)])
+    roots = np.roots(closed_loop_denominator(num, den, comp["gain"]))
+    assert min(abs(r - target) for r in roots) < 1e-6
+
+
+def test_pd_design_forces_a_unique_zero():
+    """PD has one unknown and one angle equation, so the zero is determined:
+    it must supply the whole deficiency by itself."""
+    design = compute_compensator_design("0, -4, -6", "", 30, 1.99, "pd")
+    compensator = design["compensator"]
+    assert compensator["pole"] is None
+    assert compensator["theta_zero"] == pytest.approx(design["deficiency"], abs=1e-6)
+
+
+def test_pd_zero_is_the_upper_bound_for_a_lead_zero():
+    """PD is the limiting case of lead as the compensator pole runs to
+    infinity, so both designs report the same bound."""
+    pd = compute_compensator_design("0, -4, -6", "", 30, 1.99, "pd")["compensator"]
+    lead = compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", 5)["compensator"]
+    assert lead["zero_limit"] == pytest.approx(pd["zero"], abs=1e-9)
+    assert lead["zero"] < lead["zero_limit"]
+
+
+def test_lead_zero_beyond_the_limit_is_rejected():
+    limit = compute_compensator_design("0, -4, -6", "", 30, 1.99, "pd")["compensator"]["zero"]
+    with pytest.raises(ValueError, match="short of"):
+        compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", limit + 1)
+
+
+def test_design_rejects_target_already_on_the_locus():
+    """Asking for a slower response than proportional control already gives
+    needs negative phase, which a lead section cannot supply."""
+    with pytest.raises(ValueError, match="no lead compensator is needed"):
+        compute_compensator_design("0, -4, -6", "", 30, 20.0, "lead", 5)
+
+
+def test_design_rejects_bad_settling_time():
+    with pytest.raises(ValueError, match="Target settling time"):
+        compute_compensator_design("0, -4, -6", "", 30, -1, "pd")
+
+
+def test_design_includes_both_loci():
+    design = compute_compensator_design("0, -4, -6", "", 30, 1.99, "lead", 5)
+    assert len(design["uncompensated"]["branches"]) == 3
+    assert len(design["compensated"]["branches"]) == 4
+
+
+def test_compensator_design_endpoint(client):
+    resp = client.post(
+        "/api/compensator-design",
+        json={"poles": "0, -4, -6", "zeros": "", "overshoot": 30,
+              "target_ts": 1.99, "kind": "lead", "zero_location": 5},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["compensator"]["kind"] == "lead"
+
+
+def test_compensator_design_endpoint_reports_errors(client):
+    resp = client.post(
+        "/api/compensator-design",
+        json={"poles": "0, -4, -6", "zeros": "", "overshoot": 30,
+              "target_ts": 1.99, "kind": "lead", "zero_location": 500},
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_compensator_presets_endpoint(client):
+    resp = client.get("/api/compensator-presets")
+    assert resp.status_code == 200
+    assert len(resp.get_json()) == 3

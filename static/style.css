@@ -85,30 +85,30 @@ body {
   background: var(--page-bg);
   color: var(--ink-primary);
   margin: 0;
-  padding: 2.5rem 1.5rem 4rem;
+  padding: 1rem 1.5rem 3rem;
 }
 
 .page {
-  max-width: 880px;
+  max-width: 1560px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 .app-header {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.1rem;
 }
 
 .app-header h1 {
-  font-size: 1.75rem;
+  font-size: 1.4rem;
   font-weight: 650;
   letter-spacing: -0.01em;
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.2rem;
 }
 
 .subtitle {
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: var(--ink-secondary);
   margin: 0;
 }
@@ -118,7 +118,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow);
-  padding: 1.25rem 1.5rem 1.5rem;
+  padding: 1rem 1.25rem 1.15rem;
 }
 
 .card-title {
@@ -127,20 +127,21 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--ink-muted);
-  margin: 0 0 0.9rem;
+  margin: 0 0 0.7rem;
 }
 
 /* Presets */
 
 .preset-row {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   flex-wrap: wrap;
 }
 
 .preset-row button {
   font: inherit;
-  padding: 0.45rem 1rem;
+  font-size: 0.85rem;
+  padding: 0.32rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--page-bg);
@@ -163,9 +164,9 @@ body {
 
 .controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1.1rem;
-  margin-bottom: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
 }
 
 .controls label {
@@ -207,8 +208,8 @@ body {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  margin-bottom: 1.1rem;
-  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.8rem;
+  padding: 0.4rem 0.9rem;
   background: var(--page-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -475,9 +476,9 @@ body {
 
 .tab-btn {
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  padding: 0.55rem 1.1rem;
+  padding: 0.38rem 0.85rem;
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
@@ -504,7 +505,7 @@ body {
 .tab-panel {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0.85rem;
 }
 
 .tab-panel.hidden {
@@ -568,7 +569,7 @@ body {
 /* 2nd-order system tab */
 
 .slider-field {
-  margin-bottom: 1.4rem;
+  margin-bottom: 1rem;
 }
 
 .slider-field:last-of-type {
@@ -679,7 +680,7 @@ input[type="range"]:focus-visible {
 
 #rl-chart {
   width: 100%;
-  height: 620px;
+  height: 400px;
 }
 
 #rl-probe-card.hidden {
@@ -688,7 +689,7 @@ input[type="range"]:focus-visible {
 
 #rl-response-chart {
   width: 100%;
-  height: 380px;
+  height: 400px;
 }
 
 .rl-toggles {
@@ -777,4 +778,84 @@ input[type="range"]:focus-visible {
 .regime-badge-critical {
   border-color: var(--critical);
   background: var(--critical-wash);
+}
+
+
+/* --- Compensator design tab --- */
+
+#cd-locus-chart {
+  width: 100%;
+  height: 332px;
+}
+
+#cd-response-chart {
+  width: 100%;
+  height: 332px;
+}
+
+#cd-zero-field.hidden {
+  display: none;
+}
+
+.cd-result {
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+
+.cd-result-line {
+  font-size: 0.95rem;
+  color: var(--ink-primary);
+  margin-bottom: 0.35rem;
+}
+
+.cd-steps {
+  margin: 0;
+  padding-left: 1.3rem;
+  color: var(--ink-secondary);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.cd-steps > li {
+  margin-bottom: 1rem;
+}
+
+.cd-steps b {
+  color: var(--ink-primary);
+}
+
+.cd-angle-table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 260px;
+}
+
+.cd-angle-table td {
+  padding: 0.25rem 1.2rem 0.25rem 0;
+  border-bottom: 1px solid var(--gridline);
+  color: var(--ink-primary);
+}
+
+.cd-angle-table .cd-num {
+  text-align: right;
+  padding-right: 0;
+}
+
+.cd-angle-sum {
+  margin: 0.6rem 0 0;
+}
+
+.cd-charts {
+  /* The locus enforces a 1:1 data aspect, so a wide box forces a needlessly
+     wide real-axis range; give it the narrower column. */
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 720px) {
+  .cd-charts {
+    grid-template-columns: 1fr;
+  }
 }

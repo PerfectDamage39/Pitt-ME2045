@@ -19,6 +19,7 @@
         <button id="tab-btn-editor" class="tab-btn" type="button" role="tab" aria-selected="false">Pole-Zero Editor</button>
         <button id="tab-btn-second-order" class="tab-btn" type="button" role="tab" aria-selected="false">2nd-Order System</button>
         <button id="tab-btn-root-locus" class="tab-btn" type="button" role="tab" aria-selected="false">Root Locus</button>
+        <button id="tab-btn-compensator" class="tab-btn" type="button" role="tab" aria-selected="false">Compensator Design</button>
       </nav>
 
       <section id="tab-panel-explorer" class="tab-panel">
@@ -273,7 +274,7 @@
               <label>
                 <span class="field-label">Open-loop poles</span>
                 <input id="rl-poles-input" type="text" value="-1, -2, -3, -4" />
-                <span class="field-hint">Comma-separated. Use &plusmn; for a conjugate pair, e.g. &minus;1&plusmn;1j</span>
+                <span class="field-hint">Comma-separated; &minus;1&plusmn;1j gives a conjugate pair</span>
               </label>
               <label>
                 <span class="field-label">Open-loop zeros</span>
@@ -346,6 +347,77 @@
           <p id="rl-probe-verdict" class="rl-verdict"></p>
         </section>
       </section>
+      <section id="tab-panel-compensator" class="tab-panel hidden">
+        <div class="chart-row">
+          <section class="card">
+            <h2 class="card-title">Plant &amp; specs</h2>
+            <div id="cd-presets" class="preset-row"></div>
+            <div class="controls">
+              <label>
+                <span class="field-label">Plant poles</span>
+                <input id="cd-poles-input" type="text" value="0, -4, -6" />
+              </label>
+              <label>
+                <span class="field-label">Plant zeros</span>
+                <input id="cd-zeros-input" type="text" value="" />
+              </label>
+              <label>
+                <span class="field-label">Overshoot (%)</span>
+                <input id="cd-overshoot-input" type="number" value="30" min="0.1" max="99" step="any" />
+                <span class="field-hint">Fixes &zeta;</span>
+              </label>
+              <label>
+                <span class="field-label">Target T<sub>s</sub> (s)</span>
+                <input id="cd-target-ts-input" type="number" value="1.99" min="0.01" step="any" />
+                <span class="field-hint">Fixes &zeta;&omega;<sub>n</sub> = 4/T<sub>s</sub></span>
+              </label>
+            </div>
+          </section>
+
+          <section class="card">
+            <h2 class="card-title">Compensator</h2>
+            <div class="toggle-row" role="group" aria-label="Compensator type">
+              <button id="cd-pd-btn" class="toggle-btn" type="button">PD (zero only)</button>
+              <button id="cd-lead-btn" class="toggle-btn active" type="button">Lead (zero + pole)</button>
+            </div>
+            <div id="cd-zero-field" class="slider-field">
+              <div class="slider-label-row">
+                <label for="cd-zero-slider" class="field-label">Compensator zero</label>
+                <span id="cd-zero-value" class="slider-value"></span>
+              </div>
+              <input id="cd-zero-slider" type="range" min="0.1" max="6" step="0.01" value="5" />
+              <p id="cd-zero-hint" class="field-hint"></p>
+            </div>
+            <div id="cd-result-body" class="cd-result"></div>
+          </section>
+        </div>
+
+        <div id="cd-error-banner" class="error-banner hidden" role="alert">
+          <svg class="error-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 2.5 18.5 17H1.5L10 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M10 8v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="10" cy="14.5" r="0.9" fill="currentColor" />
+          </svg>
+          <span id="cd-error-message"></span>
+        </div>
+
+        <div class="chart-row cd-charts">
+          <section class="card">
+            <h2 class="card-title">Root locus &mdash; dashed: plant alone, solid: compensated</h2>
+            <div id="cd-locus-chart"></div>
+          </section>
+
+          <section class="card">
+            <h2 class="card-title">Step response &mdash; normalized to final value</h2>
+            <div id="cd-response-chart"></div>
+          </section>
+        </div>
+
+        <section class="card">
+          <h2 class="card-title">The design, step by step</h2>
+          <div id="cd-steps-body"></div>
+        </section>
+      </section>
     </div>
 
     <script src="{{ url_for('static', filename='chart-utils.js') }}"></script>
@@ -353,5 +425,6 @@
     <script src="{{ url_for('static', filename='pole-zero-editor.js') }}"></script>
     <script src="{{ url_for('static', filename='second-order-tab.js') }}"></script>
     <script src="{{ url_for('static', filename='root-locus-tab.js') }}"></script>
+    <script src="{{ url_for('static', filename='compensator-tab.js') }}"></script>
   </body>
 </html>

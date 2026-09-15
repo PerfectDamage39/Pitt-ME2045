@@ -45,6 +45,16 @@ against the angle criterion: a vector is drawn from every pole and zero,
 each distance and angle is tabulated, and the tool reports whether the sum
 lands on 180°.
 
+**Compensator Design** — work the classical cascade-compensation problem
+end to end. Give it a plant, a percent-overshoot spec and a target
+settling time, and it finds where proportional control puts you now,
+where the spec says you want to be, and how much phase the plant is short
+at that point. Then place a **PD** compensator (a lone zero, whose
+location is forced — one unknown, one angle equation) or a **lead**
+compensator (drag the zero and watch the pole solve itself). The locus
+before and after are drawn together, along with the two step responses,
+so a halved settling time at unchanged overshoot is visible at a glance.
+
 Everything runs locally with a light/dark theme, no build step, and no
 external accounts.
 
