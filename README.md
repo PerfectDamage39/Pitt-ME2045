@@ -13,7 +13,7 @@ and ωn, or sweep the gain on a **root locus** and watch the closed-loop
 poles travel toward instability. New tools get added as the class
 progresses.
 
-![Typing a new denominator instantly updates the transfer function, response curve, and pole–zero map; switching to the Pole-Zero Editor tab and clicking to place a pole updates them the same way](docs/assets/explorer-demo.gif)
+![Three tabs in sequence: typing a new denominator in the Explorer updates the transfer function and response live; sweeping the gain on the Root Locus tab walks the closed-loop poles along the branches and out past the jω axis until the response diverges; dragging the compensator zero on the Compensator Design tab reshapes the locus through the target pole](docs/assets/controls-lab-demo.gif)
 
 ## The Tabs
 
